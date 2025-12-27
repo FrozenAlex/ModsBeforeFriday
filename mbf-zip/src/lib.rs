@@ -80,6 +80,9 @@ impl<T: Read + Seek> ZipFile<T> {
 
         buf_file.seek(SeekFrom::End(-22))?; // Assuming zero comment, this is the latest position for the EOCD header
 
+        // TODO: Fix this to handle aligned apks and apks with comments for better compatibility.
+        // Aligninng the APK may add null bytes at the end of the file and misalign stepping backwards by 4 bytes
+        // Refetence code with proper implementation of it: https://android.googlesource.com/platform/build/%2B/8740e9d/tools/apksigner/core/src/com/android/apksigner/core/internal/zip/ZipUtils.java
         // Read backwards until an EOCD header is found.
         while buf_file.read_u32::<LE>()? != EndOfCentDir::HEADER {
             if buf_file.stream_position()? == 4 {
