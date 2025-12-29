@@ -43,6 +43,9 @@ pub(super) fn handle_patch(
 
     std::fs::create_dir_all(&PARAMETERS.temp)?;
 
+    // If the downgrade to version is the same as the current version, just ignore it.
+    let downgrade_to = downgrade_to.filter(|ver| ver != &app_info.version);
+
     // Either downgrade or just patch the current APK depending on the caller's choice.
     let patching_result = patching::mod_beat_saber(
         Path::new(&PARAMETERS.temp),
