@@ -199,7 +199,11 @@ fn reinstall_modded_app(
         .context("Uninstalling vanilla APK")?;
 
     Command::new("pm")
-        .args(["install", &temp_apk_path.to_string_lossy()])
+        .args([
+            "install", 
+            "-i", "com.picovr.store",
+            &temp_apk_path.to_string_lossy()
+        ])
         .output()
         .context("Installing modded APK")?;
 
