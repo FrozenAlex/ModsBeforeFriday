@@ -165,7 +165,10 @@ impl<'agent> ResCache<'agent> {
                 return Err(anyhow!("Unexpected HTTP {status} response fetching {url}"));
             }
             Err(err) => {
-                return Err(anyhow!(err).context("HTTP GET to get file to cache"));
+                return Err(anyhow!("{err:?}").context(format!(
+                    "HTTP GET to get file to cache from {url} into {}",
+                    cached_path.display()
+                )));
             }
         };
 
@@ -231,7 +234,11 @@ impl<'agent> ResCache<'agent> {
     ) -> Result<T, JsonPullError> {
         let json_bytes = match self.get_bytes_cached(url, cached_file_name) {
             Ok(bytes) => bytes,
-            Err(fetch_err) => return Err(JsonPullError::FetchError(fetch_err)),
+            Err(fetch_err) => {
+                return Err(JsonPullError::FetchError(fetch_err.context(format!(
+                    "Fetching JSON from {url} into cache file {cached_file_name}"
+                ))))
+            }
         };
 
         match serde_json::from_slice(&json_bytes) {
