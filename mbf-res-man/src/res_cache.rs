@@ -155,7 +155,20 @@ impl<'agent> ResCache<'agent> {
             }
         }
 
-        let resp = request.call().context("HTTP GET to get file to cache")?;
+        let resp = match request.call() {
+            Ok(resp) => resp,
+            Err(ureq::Error::Status(304, resp)) => resp,
+            Err(ureq::Error::Status(404, _)) => {
+                return Err(anyhow!("File not found at {url}"));
+            }
+            Err(ureq::Error::Status(status, _)) => {
+                return Err(anyhow!("Unexpected HTTP {status} response fetching {url}"));
+            }
+            Err(err) => {
+                return Err(anyhow!(err).context("HTTP GET to get file to cache"));
+            }
+        };
+
         match resp.status() {
             304 => {
                 // Cached copy is still valid
