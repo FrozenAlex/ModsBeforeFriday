@@ -11,6 +11,17 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, warn};
 use serde::de::DeserializeOwned;
 
+fn describe_ureq_error(err: &ureq::Error) -> String {
+    match err {
+        ureq::Error::Status(status, resp) => {
+            format!("HTTP {status} response: {}", resp.status_text())
+        }
+        ureq::Error::Transport(transport_err) => {
+            format!("transport error: {transport_err} ({transport_err:?})")
+        }
+    }
+}
+
 /// We separate this out into an enum as if a file can't be fetched,
 /// then it is useful to know that the *fetching* was the problem and not the *parsing*
 /// so that the user can be warned of their failing internet connection.
@@ -20,13 +31,20 @@ pub enum JsonPullError {
     ParseError(serde_json::Error),
 }
 
-impl std::error::Error for JsonPullError {}
+impl std::error::Error for JsonPullError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::FetchError(e) => Some(e.as_ref()),
+            Self::ParseError(e) => Some(e),
+        }
+    }
+}
 
 impl Display for JsonPullError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ParseError(e) => write!(f, "Failed to parse JSON into required type: {e}"),
-            Self::FetchError(e) => write!(f, "Failed to download JSON: {e}"),
+            Self::ParseError(_) => write!(f, "Failed to parse JSON into required type"),
+            Self::FetchError(_) => write!(f, "Failed to download JSON"),
         }
     }
 }
@@ -165,8 +183,8 @@ impl<'agent> ResCache<'agent> {
                 return Err(anyhow!("Unexpected HTTP {status} response fetching {url}"));
             }
             Err(err) => {
-                return Err(anyhow!("{err:?}").context(format!(
-                    "HTTP GET to get file to cache from {url} into {}",
+                return Err(anyhow!(describe_ureq_error(&err)).context(format!(
+                    "HTTP GET failed for {url} while caching to {}",
                     cached_path.display()
                 )));
             }
@@ -235,9 +253,15 @@ impl<'agent> ResCache<'agent> {
         let json_bytes = match self.get_bytes_cached(url, cached_file_name) {
             Ok(bytes) => bytes,
             Err(fetch_err) => {
+                let root_cause = fetch_err
+                    .chain()
+                    .last()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| fetch_err.to_string());
+
                 return Err(JsonPullError::FetchError(fetch_err.context(format!(
-                    "Fetching JSON from {url} into cache file {cached_file_name}"
-                ))))
+                    "Fetching JSON from {url} into cache file {cached_file_name} failed: {root_cause}"
+                ))));
             }
         };
 
