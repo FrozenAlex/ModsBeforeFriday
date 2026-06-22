@@ -171,14 +171,32 @@ impl<'agent> ResCache<'agent> {
     /// if there is no cached copy already or the cached copy is out of date.
     /// Returns the contents of the file as a byte array.
     pub fn get_bytes_cached(&self, url: &str, cached_file_name: &str) -> Result<Vec<u8>> {
-        let mut cache_handle = self.get_cached(url, cached_file_name)?;
+        match self.get_cached(url, cached_file_name) {
+            Ok(mut cache_handle) => {
+                let mut buf = Vec::new();
+                cache_handle
+                    .read_to_end(&mut buf)
+                    .context("Reading file from cache")?;
 
-        let mut buf = Vec::new();
-        cache_handle
-            .read_to_end(&mut buf)
-            .context("Reading file from cache")?;
-
-        Ok(buf)
+                Ok(buf)
+            }
+            Err(fetch_err) => {
+                // If fetching failed (likely offline), try to use an existing cached file on disk.
+                let cached_path = self.cache_root.join(cached_file_name);
+                if cached_path.exists() {
+                    warn!("Fetch failed ({fetch_err}), using cached file {cached_file_name}");
+                    let mut cache_handle = std::fs::File::open(&cached_path)
+                        .context("Opening cached file after fetch failure")?;
+                    let mut buf = Vec::new();
+                    cache_handle
+                        .read_to_end(&mut buf)
+                        .context("Reading cached file after fetch failure")?;
+                    Ok(buf)
+                } else {
+                    Err(fetch_err)
+                }
+            }
+        }
     }
 
     /// Gets a file from the provided URL and caches it at `cached_file_name` within the `cache_root`,
